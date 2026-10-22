@@ -25,21 +25,6 @@ local function getLspArgs(lsp, rootUri)
   return {}
 end
 
-local function parseMessage(message)
-  local jsonStart = message:find("\r\n\r\n")
-
-  if jsonStart then
-      local jsonBody = message:sub(jsonStart + 4)
-      local status, body = pcall(json.decode, jsonBody)
-
-      if status then 
-        return body 
-      end
-  end
-  
-  return nil
-end
-
 local function getFileText(bp) 
   return util.String(bp.Buf:Bytes())
 end

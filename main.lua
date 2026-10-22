@@ -190,32 +190,27 @@ end
 
 local completionRequestId = nil
 
-local onStdout = function(output)
-    micro.Log("Stdout", output)
+local onStdout = function(msg)
+    micro.Log("Stdout", msg)
     
     -- Filter notifications
-    if output:find('"method":') then
+    if msg.method ~= nil then
         micro.Log("Ignoring LSP notification")
         return
     end
 
-    local responseId = output:match('"id"%s*:%s*(%d+)')
-    micro.Log("responseId", responseId, completion.id)
-    if responseId then
-        responseId = tonumber(responseId)
-        -- Only process if it matches our completion request ID
-        if responseId ~= completion.id then
-            return
-        end
+    if msg.id ~= completion.id then
+        micro.Log("msg.id does not match completion.id: ", msg.id, completion.id)
+        return
     end
     
-    completion:fromJson(output)
+    completion:fromJson(msg)
     
     if completion.didHaveCompletions then
         openDropdownMenu()
         completion:displayText(sideView)
         command = ""
-    elseif completion.jsonBuffer == "" then
+    else
         closeDropdownMenu()
     end
 end

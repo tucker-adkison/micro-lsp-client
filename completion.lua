@@ -11,7 +11,6 @@ local Completion = {
     completions = {},
     id = 0,
     didHaveCompletions = false,
-    jsonBuffer = "",
     snippetActive = false
 }
 Completion.__index = Completion
@@ -20,27 +19,9 @@ function Completion.new()
     return setmetatable({}, Completion)
 end
 
-function Completion:fromJson(outputString)
+function Completion:fromJson(response)
     self.completions = {}
-    self.jsonBuffer = self.jsonBuffer .. outputString 
     self.didHaveCompletions = false
-
-    local contentLength = self.jsonBuffer:match("Content%-Length:%s*(%d+)")
-    if not contentLength then 
-        return 
-    end
-
-    contentLength = tonumber(contentLength)
-    local jsonStart = self.jsonBuffer:find("\r\n\r\n")
-
-    local jsonBody = self.jsonBuffer:sub(jsonStart + 4)
-    if #jsonBody < contentLength then
-        micro.Log(string.format("Buffering: have %d bytes, need %d", #jsonBody, contentLength))
-        return
-    end
-    micro.Log(string.format("Found %d bytes out of %d bytes", #jsonBody, contentLength))
-
-    local response = utils.parseMessage(self.jsonBuffer)
     
     if response and response.result and response.result.items then 
         local items = response.result.items 
@@ -71,10 +52,8 @@ function Completion:fromJson(outputString)
             return sortA < sortB
         end)
 
-        -- micro.Log("Completions", self.completions)
+        micro.Log("Completions", self.completions)
     end
-
-    self.jsonBuffer = ""
 end
 
 local function repeatStr(str, len)
