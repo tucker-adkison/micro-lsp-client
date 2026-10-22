@@ -50,7 +50,7 @@ local openDropdownMenu = function()
         sideView.Buf:SetOptionNative("statusformatl", "filemanager")
         sideView.Buf:SetOptionNative("scrollbar", false)
 
-        micro.CurPane():NextSplit()
+        micro.CurPane():PreviousSplit()
     end
 end
 
@@ -86,7 +86,7 @@ function preQuit()
 
     --TODO remove this iff
     if server.server ~= nil then
-        lsp:shutdown(server)
+        lsp:shutdown()
     end
 end
 
@@ -96,6 +96,54 @@ function preInsertNewline()
             closeDropdownMenu()
         end
     end
+end
+
+function preEscape()
+    closeDropdownMenu()
+    completion.snippetActive = false
+    return false
+end
+
+function nextParam(bp) 
+    if completion ~= nil and completion.snippetActive then
+        local cursor = bp.Buf:GetActiveCursor()
+        local line =  bp.Buf:Line(cursor.Y)
+
+        local i = cursor.X + 1   
+
+        while i < #line + 1 do 
+            if line:sub(i, i) == ')' then 
+                cursor:GotoLoc(buffer.Loc(i, cursor.Y))
+
+                local nextTok = line:sub(i+1, i+1)
+                if nextTok ~= ',' then
+                    completion.snippetActive = false
+                end
+                
+                return true 
+            elseif line:sub(i, i) == ',' then
+                local nextTok = line:sub(i+1, i+1)
+
+                if nextTok == ',' or nextTok == ')' then 
+                    cursor:GotoLoc(buffer.Loc(i, cursor.Y))
+                    return true
+                end
+            end
+
+            i = i + 1
+        end
+
+        completion.snippetActive = false
+
+        return true
+    else 
+        completion.snippetActive = false
+        return false 
+    end
+end
+
+function init() 
+    config.TryBindKey("Tab", "lua:lspClient.nextParam|InsertTab", false)
 end
 
 function preinit()
@@ -114,6 +162,10 @@ function preinit()
 end
 
 function onRune(bp, _)
+    if server.server == nil or lsps[bp.Buf:FileType()] == nil then
+        return
+    end
+
     if not lspInitialized then
         lspInitialized = true
         lsp:initialize()
@@ -131,7 +183,7 @@ function onRune(bp, _)
         completion.id = lsp:completion(bp)
 
         if (micro.CurPane() == sideView) then
-            micro.CurPane():NextSplit()
+            micro.CurPane():PreviousSplit()
         end
     end
 end

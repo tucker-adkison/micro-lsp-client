@@ -17,6 +17,9 @@ local function getLspArgs(lsp, rootUri)
       "-remote.debug=:0",
       "-rpc.trace"
     }
+  elseif lsp == "clangd" then
+    -- wait for the preamble so #include and header symbols complete
+    return {"--completion-parse=always"}
   end
 
   return {}

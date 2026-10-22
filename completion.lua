@@ -11,7 +11,8 @@ local Completion = {
     completions = {},
     id = 0,
     didHaveCompletions = false,
-    jsonBuffer = ""
+    jsonBuffer = "",
+    snippetActive = false
 }
 Completion.__index = Completion
 
@@ -127,7 +128,8 @@ function Completion:autoComplete()
     micro.Log('New text before cleaning: ', textEdit['newText'])
     
     local originalText = textEdit['newText']
-    
+    originalText = string.gsub(originalText, ",%s+%$", ",$")
+
     local newText = string.gsub(originalText, "%$%{%d+:?[^}]*%}", "")
     newText = string.gsub(newText, "%$%d+", "")
 
@@ -135,8 +137,12 @@ function Completion:autoComplete()
     
     local startLoc = buffer.Loc(rangeStart['character'], rangeStart['line'])
     local endLoc = buffer.Loc(rangeEnd['character'], rangeEnd['line'])
-    
-    micro.CurPane():NextSplit()
+
+    if originalText ~= nil and self.snippetActive == false then 
+        self.snippetActive = string.find(originalText, "%${%d") ~= nil or self.snippetActive
+    end
+
+    micro.CurPane():PreviousSplit()
     local curPane = micro.CurPane()
     curPane.Buf.EventHandler:Remove(startLoc, endLoc)
     curPane.Buf.EventHandler:Insert(startLoc, newText)
@@ -159,7 +165,6 @@ function Completion:findCursorPosition(originalText, cleanedText, baseChar, base
     if string.len(cleanedText) >= 2 then
         local lastTwo = string.sub(cleanedText, -2)
         local pairs = {
-            ["()"] = true,
             ["[]"] = true,
             ["{}"] = true,
             ["<>"] = true,

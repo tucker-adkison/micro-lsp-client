@@ -92,3 +92,4 @@ Thumbs.db
 .vscode
 luacov.stats.out
 luacov.report.html
+log.txt
