@@ -13,8 +13,6 @@ local settings = nil
 local lsps = {}
 local utils = require 'utils'
 local pid = nil
-local lspInitialized = false
-local didOpen = false
 
 -- initializing all of our classes 
 local Completion = require "completion"
@@ -86,7 +84,7 @@ function preQuit()
 
     --TODO remove this iff
     if server.server ~= nil then
-        lsp:shutdown()
+        lsp:sendWhenReady(function() lsp:shutdown() end, "shutdown")
     end
 end
 
@@ -161,34 +159,21 @@ function onRune(bp, _)
     if server.server == nil or lsps[bp.Buf:FileType()] == nil then
         return
     end
+    
+    lsp:sendWhenReady(function() lsp:didChange(bp) end, "didChange")
 
-    if not lspInitialized then
-        lspInitialized = true
-        lsp:initialize()
-    end
-
-    if lspInitialized then
-        if not didOpen then 
-            lsp:didOpen(bp)
-            
-            didOpen = true
+    lsp:sendWhenReady(function() lsp:completion(bp, function(items) 
+        completion:fromItems(items)
+        if completion.didHaveCompletions then
+            openDropdownMenu()
+            completion:displayText(sideView)
+        else
+            closeDropdownMenu()
         end
+    end) end, "completion")
 
-        lsp:didChange(bp)
-
-        lsp:completion(bp, function(items) 
-            completion:fromItems(items)
-            if completion.didHaveCompletions then
-                openDropdownMenu()
-                completion:displayText(sideView)
-            else
-                closeDropdownMenu()
-            end
-        end)
-
-        if (micro.CurPane() == sideView) then
-            micro.CurPane():PreviousSplit()
-        end
+    if (micro.CurPane() == sideView) then
+        micro.CurPane():PreviousSplit()
     end
 end
 
@@ -207,6 +192,12 @@ function onBufferOpen(buf)
         local args = utils.getLspArgs(lspClient, wd)
 
         server:startServer(lspClient, args, onStderr, onExit)
+        
+        lsp:initialize(function(err) 
+            micro.InfoBar():Message(tostring(err.message))
+        end)
+
+        lsp:sendWhenReady(function() lsp:didOpen(buf) end, "didOpen")
     end
 end
 

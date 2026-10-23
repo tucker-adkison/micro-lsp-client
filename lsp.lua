@@ -5,12 +5,19 @@ package.path = package.path .. ";" .. pluginPath .. "?.lua"
 
 local fmt = import("fmt")
 local utils = require "utils"
+local micro = import("micro") 
 
 local Lsp = {}
 Lsp.__index = Lsp
 
 function Lsp.new(server)
-    return setmetatable({server = server, version = -1, lastCompletionId = 0}, Lsp)
+    return setmetatable({
+        server = server, 
+        version = -1, 
+        lastCompletionId = 0, 
+        state="starting",
+        queue = {}
+    }, Lsp)
 end
 
 function Lsp:completion(bp, onItems)
@@ -39,7 +46,7 @@ end
 
 function Lsp:didChange(bp)
     local filePath = bp.Buf.AbsPath
-    local fileText = utils.getFileText(bp)
+    local fileText = utils.getFileText(bp.Buf)
 
     self.version = self.version + 1
 	self.server:notify("textDocument/didChange", {
@@ -51,19 +58,40 @@ function Lsp:didChange(bp)
     })
 end
 
-function Lsp:initialize()
+function Lsp:initialize(showError)
     local wd, _ = go_os.Getwd()
     local pid = go_os.Getpid()
     local params = utils.getInitiaizeParams(utils.getRootUri(wd), pid)
 
-	self.server:request("initialize", params, nil)
-    self.server:notify("initialized", {})
+	self.server:request("initialize", params, function(result, err, id) 
+        if err ~= nil then 
+            self.state = "failed"
+            showError(err)
+            self.queue = {}
+        else 
+            self.capabilities = result.capabilities
+            self.serverInfo = result.serverInfo
+            self.server:notify("initialized", {})
+            self.state = "ready"
+
+            local queued = self.queue
+            self.queue = {} 
+
+            for _, item in ipairs(queued) do
+                local status, result = pcall(item.value)
+
+                if not status then 
+                    micro.Log("Error calling method", item.key, result)
+                end
+            end
+        end
+    end)
 end
 
-function Lsp:didOpen(bp)
-    local fileType = bp.Buf:FileType()
-    local filePath = bp.Buf.AbsPath
-    local fileText = utils.getFileText(bp)
+function Lsp:didOpen(buf)
+    local fileType = buf:FileType()
+    local filePath = buf.AbsPath
+    local fileText = utils.getFileText(buf)
 
     self.version = self.version + 1
     self.server:notify("textDocument/didOpen", {
@@ -78,6 +106,16 @@ end
 
 function Lsp:shutdown()
 	self.server:request('shutdown', nil, nil)
+end
+
+function Lsp:sendWhenReady(fn, t)
+    if self.state == "starting" then
+        if t == "didChange" or t == "didOpen" then
+            table.insert(self.queue, {key=t, value=fn})
+        end
+    elseif self.state == "ready" then
+        fn()
+    end
 end
 
 return Lsp

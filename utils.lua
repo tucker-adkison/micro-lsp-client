@@ -25,8 +25,8 @@ local function getLspArgs(lsp, rootUri)
   return {}
 end
 
-local function getFileText(bp) 
-  return util.String(bp.Buf:Bytes())
+local function getFileText(buf) 
+  return util.String(buf:Bytes())
 end
 
 local function getRootUri(wd)
