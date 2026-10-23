@@ -11,7 +11,7 @@ local Server = {}
 Server.__index = Server
 
 function Server.new()
-    return setmetatable({ readBuffer = "", pending = {} }, Server)
+    return setmetatable({ readBuffer = "", pending = {},  notificationHandlers = {}, nextId = -1}, Server)
 end
 
 function Server:sendMessage(id, method, params)
@@ -32,10 +32,33 @@ function Server:sendMessage(id, method, params)
     shell.JobSend(self.server, content)
 end
 
-function Server:startServer(lsp, args, onMessage, onStderr, onExit)
+function Server:respond(id, result, err) 
+    local bodyJson = {jsonrpc = "2.0",}
+    if err ~= nil then 
+        bodyJson["error"] = err
+    else 
+        bodyJson["result"] = result
+    end
+
+    if id ~= nil then
+        bodyJson["id"] = id 
+    end
+
+    local body = json.encode(bodyJson)
+
+    if err == nil and result == nil then 
+       body = body:sub(1, -2) .. ',"result":null}'
+    end
+
+    local content = "Content-Length: " .. #body .. "\r\n\r\n" .. body
+
+    micro.Log("Sending response message:\n" .. content)
+    shell.JobSend(self.server, content)
+end
+
+function Server:startServer(lsp, args, onStderr, onExit)
     micro.Log("Starting server", lsp, args)
 
-    self.onMessage = onMessage;
     self.lsp = lsp
     self.server = shell.JobSpawn(lsp, args, function(chunk)
         self:read(chunk)
@@ -68,19 +91,86 @@ function Server:read(chunk)
             
             self.readBuffer = self.readBuffer:sub(endPos + length + 1)
 
-            local status, body = pcall(json.decode, jsonBody)
+            local status, result = pcall(json.decode, jsonBody)
 
-            if status then 
-                status, _ = pcall(self.onMessage, body)
+            if status and type(result) == "table" then 
+                local status, err = pcall(self.dispatch, self, result)
 
                 if not status then 
-                    micro.Log("Error when processing message: ", body)
+                    micro.Log("Error when processing message: ", err)
                 end
             else 
-                micro.Log("Could not decode message: ", jsonBody)
+                micro.Log("Could not decode message: ", result)
             end
         end
     end
+end
+
+function Server:dispatch(msg)
+    micro.Log("Calling dispatch:", msg.id, msg.method)
+
+    if msg.id ~= nil and msg.method == nil then
+        local handler = self.pending[msg.id]
+        self.pending[msg.id] = nil
+
+        if handler ~= nil then 
+            local status, err = pcall(handler, msg.result, msg.error, msg.id)
+
+            if not status then 
+                micro.Log("Reply request failed:", err)
+            end
+        else 
+            micro.Log("Handler not found for id:", msg.id)
+        end
+    elseif msg.id == nil and msg.method ~= nil then 
+        local handler = self.notificationHandlers[msg.method]
+
+        if handler ~= nil then 
+            local status, err = pcall(handler, msg.params)
+
+            if not status then 
+                micro.Log("Notification request failed:", err)
+            end
+        else 
+            micro.Log("Handler not found for method:", msg.method)
+        end
+    elseif msg.id ~= nil and msg.method ~= nil then 
+        local handler = self.notificationHandlers[msg.method]
+
+        if handler ~= nil then 
+            local status, result = pcall(handler, msg.params)
+
+            if status then
+                self:respond(msg.id, result)
+            else 
+                micro.Log("Request failed:", result)
+                self:respond(msg.id, nil, { code = -32603,  message = tostring(result)})
+            end
+        else 
+            micro.Log("Handler not found for id and method:", msg.id, msg.method)
+            self:respond(msg.id, nil, { code = -32601, message = "Method not found" })
+        end
+    else
+        micro.Log("msg.id and msg.method are both nil")
+    end 
+end
+
+function Server:request(method, params, handler)
+    self.nextId = self.nextId + 1 
+    local id = self.nextId
+    self.pending[id] = handler 
+
+    self:sendMessage(id, method, params)
+
+    return id
+end
+
+function Server:notify(method, params)
+    self:sendMessage(nil, method, params)
+end
+
+function Server:onNotification(method, handler)
+    self.notificationHandlers[method] = handler
 end
 
 return Server

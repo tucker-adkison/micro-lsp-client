@@ -6,25 +6,19 @@ package.path = package.path .. ";" .. pluginPath .. "?.lua"
 local fmt = import("fmt")
 local utils = require "utils"
 
-local Lsp = {
-  id = -1,
-  version = -1
-}
+local Lsp = {}
 Lsp.__index = Lsp
 
 function Lsp.new(server)
-    local self = setmetatable({}, Lsp)
-    self.server = server 
-    return self 
+    return setmetatable({server = server, version = -1, lastCompletionId = 0}, Lsp)
 end
 
-function Lsp:completion(bp)
+function Lsp:completion(bp, onItems)
     local filePath = bp.Buf.AbsPath
     local line = bp.Buf:GetActiveCursor().Y
     local char = bp.Buf:GetActiveCursor().X
 
-    self.id = self.id + 1
-    self.server:sendMessage(self.id, "textDocument/completion", {
+	self.lastCompletionId = self.server:request("textDocument/completion", {
       textDocument = {
         uri = utils.getRootUri(filePath),
       },
@@ -32,9 +26,15 @@ function Lsp:completion(bp)
         line = line,
         character = char,
       },
-    })
-
-    return self.id
+    }, function(result, err, id) 
+		if err ~= nil or id ~= self.lastCompletionId then 
+			return 
+		elseif result == nil then 
+			onItems({})
+		else 
+			onItems(result.items or result)
+		end 
+	end)
 end
 
 function Lsp:didChange(bp)
@@ -42,23 +42,22 @@ function Lsp:didChange(bp)
     local fileText = utils.getFileText(bp)
 
     self.version = self.version + 1
-    self.server:sendMessage(nil, "textDocument/didChange", {
+	self.server:notify("textDocument/didChange", {
       textDocument = {
         uri = utils.getRootUri(filePath),
         version = self.version,
       },
       contentChanges = {{ text = fileText }},
-    });
-
+    })
 end
 
 function Lsp:initialize()
     local wd, _ = go_os.Getwd()
     local pid = go_os.Getpid()
     local params = utils.getInitiaizeParams(utils.getRootUri(wd), pid)
-    self.id = self.id + 1
-    self.server:sendMessage(self.id, "initialize", params)
-    self.server:sendMessage(nil, "initialized", {})
+
+	self.server:request("initialize", params, nil)
+    self.server:notify("initialized", {})
 end
 
 function Lsp:didOpen(bp)
@@ -67,7 +66,7 @@ function Lsp:didOpen(bp)
     local fileText = utils.getFileText(bp)
 
     self.version = self.version + 1
-    self.server:sendMessage(nil, "textDocument/didOpen", {
+    self.server:notify("textDocument/didOpen", {
         textDocument = {
             uri = utils.getRootUri(filePath),
             languageId = fileType,
@@ -78,7 +77,7 @@ function Lsp:didOpen(bp)
 end
 
 function Lsp:shutdown()
-    self.server:sendMessage(nil, 'shutdown', {})
+	self.server:request('shutdown', nil, nil)
 end
 
 return Lsp

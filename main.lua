@@ -180,38 +180,19 @@ function onRune(bp, _)
 
         lsp:didChange(bp)
 
-        completion.id = lsp:completion(bp)
+        lsp:completion(bp, function(items) 
+            completion:fromItems(items)
+            if completion.didHaveCompletions then
+                openDropdownMenu()
+                completion:displayText(sideView)
+            else
+                closeDropdownMenu()
+            end
+        end)
 
         if (micro.CurPane() == sideView) then
             micro.CurPane():PreviousSplit()
         end
-    end
-end
-
-local completionRequestId = nil
-
-local onStdout = function(msg)
-    micro.Log("Stdout", msg)
-    
-    -- Filter notifications
-    if msg.method ~= nil then
-        micro.Log("Ignoring LSP notification")
-        return
-    end
-
-    if msg.id ~= completion.id then
-        micro.Log("msg.id does not match completion.id: ", msg.id, completion.id)
-        return
-    end
-    
-    completion:fromJson(msg)
-    
-    if completion.didHaveCompletions then
-        openDropdownMenu()
-        completion:displayText(sideView)
-        command = ""
-    else
-        closeDropdownMenu()
     end
 end
 
@@ -229,7 +210,7 @@ function onBufferOpen(buf)
         local wd, _ = go_os.Getwd()
         local args = utils.getLspArgs(lspClient, wd)
 
-        server:startServer(lspClient, args, onStdout, onStderr, onExit)
+        server:startServer(lspClient, args, onStderr, onExit)
     end
 end
 

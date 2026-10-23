@@ -8,52 +8,46 @@ local json = require "json"
 local utils = require "utils"
 
 local Completion = {
-    completions = {},
-    id = 0,
     didHaveCompletions = false,
     snippetActive = false
 }
 Completion.__index = Completion
 
 function Completion.new()
-    return setmetatable({}, Completion)
+    return setmetatable({completions = {}}, Completion)
 end
 
-function Completion:fromJson(response)
+function Completion:fromItems(items)
     self.completions = {}
     self.didHaveCompletions = false
-    
-    if response and response.result and response.result.items then 
-        local items = response.result.items 
 
-        if #items == 0 then 
-            self.didHaveCompletions = false
-            return 
-        end
-
-        self.didHaveCompletions = true
-
-        for _, item in ipairs(items) do
-            table.insert(self.completions, {
-                label = item.label,              -- Display text: "•printf(const char *restrict, ...)"
-                insertText = item.insertText,    -- Text to insert: "printf(${1:const char *restrict, ...})"
-                detail = item.detail,            -- Type info: "int"
-                documentation = item.documentation and item.documentation.value,  -- "From <stdio.h>"
-                kind = item.kind,                -- 3 = Function
-                sortText = item.sortText,        -- For ordering
-                textEdit = item.textEdit         -- Range to replace
-            })
-        end
-
-        -- Then sort by sortText (or label if sortText is missing)
-        table.sort(self.completions, function(a, b)
-            local sortA = a.sortText or a.label
-            local sortB = b.sortText or b.label
-            return sortA < sortB
-        end)
-
-        micro.Log("Completions", self.completions)
+    if #items == 0 then 
+        self.didHaveCompletions = false
+        return 
     end
+
+    self.didHaveCompletions = true
+
+    for _, item in ipairs(items) do
+        table.insert(self.completions, {
+            label = item.label,              -- Display text: "•printf(const char *restrict, ...)"
+            insertText = item.insertText,    -- Text to insert: "printf(${1:const char *restrict, ...})"
+            detail = item.detail,            -- Type info: "int"
+            documentation = item.documentation and item.documentation.value,  -- "From <stdio.h>"
+            kind = item.kind,                -- 3 = Function
+            sortText = item.sortText,        -- For ordering
+            textEdit = item.textEdit         -- Range to replace
+        })
+    end
+
+    -- Then sort by sortText (or label if sortText is missing)
+    table.sort(self.completions, function(a, b)
+        local sortA = a.sortText or a.label
+        local sortB = b.sortText or b.label
+        return sortA < sortB
+    end)
+
+    micro.Log("Completions", self.completions)
 end
 
 local function repeatStr(str, len)
