@@ -46,8 +46,6 @@ function Completion:fromItems(items)
         local sortB = b.sortText or b.label
         return sortA < sortB
     end)
-
-    micro.Log("Completions", self.completions)
 end
 
 local function repeatStr(str, len)
@@ -98,7 +96,7 @@ function Completion:autoComplete()
     local rangeStart = range['start']
     local rangeEnd = range['end']
     
-    micro.Log('New text before cleaning: ', textEdit['newText'])
+    micro.Log('New text before cleaning:', textEdit['newText'])
     
     local originalText = textEdit['newText']
     originalText = string.gsub(originalText, ",%s+%$", ",$")
@@ -106,7 +104,7 @@ function Completion:autoComplete()
     local newText = string.gsub(originalText, "%$%{%d+:?[^}]*%}", "")
     newText = string.gsub(newText, "%$%d+", "")
 
-    micro.Log('New text after cleaning: ', newText)
+    micro.Log('New text after cleaning:', newText)
     
     local startLoc = buffer.Loc(rangeStart['character'], rangeStart['line'])
     local endLoc = buffer.Loc(rangeEnd['character'], rangeEnd['line'])

@@ -10,6 +10,19 @@ local json = require "json"
 local Server = {}
 Server.__index = Server
 
+-- every line starts with "lsp " so `grep "lsp " log.txt` shows only this plugin
+local function log(...)
+    local parts = {}
+    for i = 1, select("#", ...) do
+        parts[i] = tostring(select(i, ...))
+    end
+    micro.Log("lsp " .. table.concat(parts))
+end
+
+local function describeError(err)
+    return "error " .. tostring(err.code) .. " (" .. tostring(err.message) .. ")"
+end
+
 function Server.new()
     return setmetatable({ readBuffer = "", pending = {},  notificationHandlers = {}, nextId = -1}, Server)
 end
@@ -28,11 +41,16 @@ function Server:sendMessage(id, method, params)
     local body = json.encode(bodyJson)
     local content = "Content-Length: " .. #body .. "\r\n\r\n" .. body
 
-    micro.Log("Sending message:\n" .. content)
+    if id ~= nil then
+        log("→ request #", id, " ", method)
+    else
+        log("→ notify ", method)
+    end
+
     shell.JobSend(self.server, content)
 end
 
-function Server:respond(id, result, err) 
+function Server:respond(id, result, err)
     local bodyJson = {jsonrpc = "2.0",}
     if err ~= nil then 
         bodyJson["error"] = err
@@ -52,12 +70,11 @@ function Server:respond(id, result, err)
 
     local content = "Content-Length: " .. #body .. "\r\n\r\n" .. body
 
-    micro.Log("Sending response message:\n" .. content)
     shell.JobSend(self.server, content)
 end
 
 function Server:startServer(lsp, args, onStderr, onExit)
-    micro.Log("Starting server", lsp, args)
+    log("starting ", lsp, " ", table.concat(args, " "))
 
     self.lsp = lsp
     self.server = shell.JobSpawn(lsp, args, function(chunk)
@@ -78,7 +95,7 @@ function Server:read(chunk)
         local length = string.match(self.readBuffer:sub(1, startPos), "Content%-Length:%s*(%d+)")
 
         if length == nil then 
-            micro.Log("No Content-Length found in message: ", self.readBuffer:sub(1, startPos))
+            log("← header without Content-Length, skipped: ", self.readBuffer:sub(1, startPos))
             self.readBuffer = self.readBuffer:sub(endPos + 1)
         else 
             length = tonumber(length)
@@ -97,68 +114,86 @@ function Server:read(chunk)
                 local status, err = pcall(self.dispatch, self, result)
 
                 if not status then 
-                    micro.Log("Error when processing message: ", err)
+                    log("← dispatch failed: ", err)
                 end
-            else 
-                micro.Log("Could not decode message: ", result)
+            else
+                log("← could not decode message: ", result)
             end
         end
     end
 end
 
 function Server:dispatch(msg)
-    micro.Log("Calling dispatch:", msg.id, msg.method)
-
     if msg.id ~= nil and msg.method == nil then
-        local handler = self.pending[msg.id]
+        local entry = self.pending[msg.id]
         self.pending[msg.id] = nil
 
-        if handler ~= nil then 
-            local status, err = pcall(handler, msg.result, msg.error, msg.id)
-
-            if not status then 
-                micro.Log("Reply request failed:", err)
-            end
-        else 
-            micro.Log("Handler not found for id:", msg.id)
+        if entry == nil then
+            log("← reply #", msg.id, ": unknown id")
+            return
         end
-    elseif msg.id == nil and msg.method ~= nil then 
-        local handler = self.notificationHandlers[msg.method]
 
-        if handler ~= nil then 
+        local outcome = "ok"
+        if msg.error ~= nil then
+            outcome = describeError(msg.error)
+        end
+
+        if entry.handler == nil then
+            outcome = outcome .. ", no handler"
+        else
+            local status, err = pcall(entry.handler, msg.result, msg.error, msg.id)
+
+            if not status then
+                outcome = outcome .. ", handler failed: " .. tostring(err)
+            end
+        end
+
+        log("← reply #", msg.id, " ", entry.method, ": ", outcome)
+    elseif msg.id == nil and msg.method ~= nil then
+        local handler = self.notificationHandlers[msg.method]
+        local outcome = "ok"
+
+        if handler == nil then
+            outcome = "no handler"
+        else
             local status, err = pcall(handler, msg.params)
 
-            if not status then 
-                micro.Log("Notification request failed:", err)
+            if not status then
+                outcome = "handler failed: " .. tostring(err)
             end
-        else 
-            micro.Log("Handler not found for method:", msg.method)
         end
-    elseif msg.id ~= nil and msg.method ~= nil then 
-        local handler = self.notificationHandlers[msg.method]
 
-        if handler ~= nil then 
+        log("← notify ", msg.method, ": ", outcome)
+    elseif msg.id ~= nil and msg.method ~= nil then
+        local handler = self.notificationHandlers[msg.method]
+        local outcome
+
+        if handler == nil then
+            self:respond(msg.id, nil, { code = -32601, message = "Method not found" })
+            outcome = 'answered "method not found"'
+        else
             local status, result = pcall(handler, msg.params)
 
             if status then
                 self:respond(msg.id, result)
-            else 
-                micro.Log("Request failed:", result)
-                self:respond(msg.id, nil, { code = -32603,  message = tostring(result)})
+                outcome = "answered"
+            else
+                self:respond(msg.id, nil, { code = -32603, message = tostring(result) })
+                outcome = "handler failed: " .. tostring(result)
             end
-        else 
-            micro.Log("Handler not found for id and method:", msg.id, msg.method)
-            self:respond(msg.id, nil, { code = -32601, message = "Method not found" })
         end
+
+        log("← request #", msg.id, " ", msg.method, ": ", outcome)
     else
-        micro.Log("msg.id and msg.method are both nil")
-    end 
+        log("← message with neither id nor method")
+    end
 end
 
 function Server:request(method, params, handler)
     self.nextId = self.nextId + 1 
     local id = self.nextId
-    self.pending[id] = handler 
+    -- keep the method so the reply can be logged with it
+    self.pending[id] = { method = method, handler = handler }
 
     self:sendMessage(id, method, params)
 

@@ -150,15 +150,11 @@ function preinit()
     config.RegisterCommonOption("lsp", "server",'')
     settings = config.GetGlobalOption("lsp.server")
 
-    micro.Log(settings)
-
     local fileAndLsps = mysplit(settings, ',')
     for _, fileAndLsp in pairs(fileAndLsps) do
         local fileLspSplit = mysplit(fileAndLsp, '=')
         lsps[fileLspSplit[1]] = fileLspSplit[2]
     end
-
-    micro.Log(lsps)
 end
 
 function onRune(bp, _)
