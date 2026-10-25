@@ -5,32 +5,50 @@ package.path = package.path .. ";" .. pluginPath .. "?.lua"
 local json = require "json"
 local fmt = import("fmt")
 local util = import("micro/util")
+local micro = import("micro") 
 
 local function getLspArgs(lsp, rootUri)
-  if lsp == "jdtls" then
-    local args = "-data " .. rootUri
-    return {args}
-  elseif lsp == "gopls" then 
-    return {
-      "-logfile=auto",
-      "-debug=:0",
-      "-remote.debug=:0",
-      "-rpc.trace"
-    }
-  elseif lsp == "clangd" then
-    -- wait for the preamble so #include and header symbols complete
-    return {"--completion-parse=always"}
-  end
+	if lsp == "jdtls" then
+		local args = "-data " .. rootUri
+		return {args}
+	elseif lsp == "gopls" then 
+		return {
+			"-logfile=auto",
+			"-debug=:0",
+			"-remote.debug=:0",
+			"-rpc.trace"
+		}
+	elseif lsp == "clangd" then
+		-- wait for the preamble so #include and header symbols complete
+		return {"--completion-parse=always"}
+	end
 
-  return {}
+	return {}
 end
 
 local function getFileText(buf) 
-  return util.String(buf:Bytes())
+	return util.String(buf:Bytes())
 end
 
 local function getRootUri(wd)
-  return fmt.Sprintf("file://%s", wd)
+	return fmt.Sprintf("file://%s", wd)
+end
+
+local function getOpenPaths() 
+	local open = {}
+    local tabs = micro.Tabs()
+    for i = 1, #tabs.List do
+        local tab = tabs.List[i]
+        for j = 1, #tab.Panes do
+            local buf = tab.Panes[j].Buf
+            if buf ~= nil then
+                local uri = getRootUri(buf.AbsPath)
+				open[uri] = true 
+            end
+        end
+    end
+
+	return open
 end
 
 local function getInitiaizeParams(rootUri, pid) 
@@ -128,5 +146,6 @@ return {
     parseMessage = parseMessage,
     getFileText = getFileText,
     getLspArgs = getLspArgs,
-    getInitiaizeParams = getInitiaizeParams
+    getInitiaizeParams = getInitiaizeParams,
+	  getOpenPaths = getOpenPaths
 }

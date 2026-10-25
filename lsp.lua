@@ -13,17 +13,18 @@ Lsp.__index = Lsp
 function Lsp.new(server)
     return setmetatable({
         server = server, 
-        version = -1, 
         lastCompletionId = 0, 
         state="starting",
-        queue = {}
+        queue = {},
+        documents = {},
+        capabilities = {}
     }, Lsp)
 end
 
-function Lsp:completion(bp, onItems)
-    local filePath = bp.Buf.AbsPath
-    local line = bp.Buf:GetActiveCursor().Y
-    local char = bp.Buf:GetActiveCursor().X
+function Lsp:completion(buf, onItems)
+    local filePath = buf.AbsPath
+    local line = buf:GetActiveCursor().Y
+    local char = buf:GetActiveCursor().X
 
 	self.lastCompletionId = self.server:request("textDocument/completion", {
       textDocument = {
@@ -42,20 +43,6 @@ function Lsp:completion(bp, onItems)
 			onItems(result.items or result)
 		end 
 	end)
-end
-
-function Lsp:didChange(bp)
-    local filePath = bp.Buf.AbsPath
-    local fileText = utils.getFileText(bp.Buf)
-
-    self.version = self.version + 1
-	self.server:notify("textDocument/didChange", {
-      textDocument = {
-        uri = utils.getRootUri(filePath),
-        version = self.version,
-      },
-      contentChanges = {{ text = fileText }},
-    })
 end
 
 function Lsp:initialize(showError)
@@ -92,16 +79,82 @@ function Lsp:didOpen(buf)
     local fileType = buf:FileType()
     local filePath = buf.AbsPath
     local fileText = utils.getFileText(buf)
+    local uri = utils.getRootUri(filePath)
+    local version = 1
 
-    self.version = self.version + 1
+    if self.documents[uri] ~= nil or filePath == "" or filePath == "file://" then 
+        return
+    end
+
+    self.documents[uri] = {version = version, text = fileText}
+
     self.server:notify("textDocument/didOpen", {
         textDocument = {
-            uri = utils.getRootUri(filePath),
+            uri = uri,
             languageId = fileType,
-            version = self.version,
+            version = version,
             text = fileText,
         }
     })
+end
+
+function Lsp:didChange(buf)
+    local filePath = buf.AbsPath
+    local fileText = utils.getFileText(buf)
+    local uri = utils.getRootUri(filePath)
+    local document = self.documents[uri]
+
+    if document ~= nil and document.text ~= fileText then
+        local version = document.version + 1
+
+        document.version = version
+        document.text = fileText
+
+        self.server:notify("textDocument/didChange", {
+            textDocument = {
+                uri = uri,
+                version = version
+            },
+            contentChanges = {{ text = fileText }},
+        })
+    end
+end
+
+function Lsp:didSave(uri)
+    local document = self.documents[uri]
+    local sync = self.capabilities and self.capabilities.textDocumentSync
+
+    if document == nil or type(sync) ~= "table" then
+        return
+    end
+
+    local save = sync.save
+    if save ~= true and type(save) ~= "table" then
+        return
+    end
+
+    local params = { textDocument = { uri = uri } }
+    if type(save) == "table" and save.includeText then
+        params.text = document.text
+    end
+
+    self.server:notify("textDocument/didSave", params)
+end
+
+function Lsp:didClose(uri) 
+    self.server:notify("textDocument/didClose", {
+        textDocument = {uri = uri}
+    })
+end 
+
+function Lsp:closeMissing() 
+    local open = utils.getOpenPaths()
+    for uri, path in pairs(self.documents) do 
+        if not open[uri] then
+            self.documents[uri] = nil 
+            self:sendWhenReady(function() self:didClose(uri) end, "didClose")
+        end
+    end
 end
 
 function Lsp:shutdown()
@@ -110,7 +163,7 @@ end
 
 function Lsp:sendWhenReady(fn, t)
     if self.state == "starting" then
-        if t == "didChange" or t == "didOpen" then
+        if t == "didChange" or t == "didOpen" or t == "didClose" then
             table.insert(self.queue, {key=t, value=fn})
         end
     elseif self.state == "ready" then

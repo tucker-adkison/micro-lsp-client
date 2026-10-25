@@ -159,10 +159,10 @@ function onRune(bp, _)
     if server.server == nil or lsps[bp.Buf:FileType()] == nil then
         return
     end
-    
-    lsp:sendWhenReady(function() lsp:didChange(bp) end, "didChange")
 
-    lsp:sendWhenReady(function() lsp:completion(bp, function(items) 
+    local buf = bp.Buf
+    lsp:sendWhenReady(function() lsp:didChange(buf) end, "didChange")
+    lsp:sendWhenReady(function() lsp:completion(buf, function(items) 
         completion:fromItems(items)
         if completion.didHaveCompletions then
             openDropdownMenu()
@@ -187,17 +187,36 @@ function onBufferOpen(buf)
     local fileType = buf:FileType()
     local lspClient = lsps[fileType]
 
-    if lspClient ~= nil and not server.server then
-        local wd, _ = go_os.Getwd()
-        local args = utils.getLspArgs(lspClient, wd)
+    if lspClient ~= nil then
+        if not server.server then
+            local wd, _ = go_os.Getwd()
+            local args = utils.getLspArgs(lspClient, wd)
 
-        server:startServer(lspClient, args, onStderr, onExit)
-        
-        lsp:initialize(function(err) 
-            micro.InfoBar():Message(tostring(err.message))
-        end)
+            server:startServer(lspClient, args, onStderr, onExit)
+            
+            lsp:initialize(function(err) 
+                micro.InfoBar():Message(tostring(err.message))
+            end)
+        end
 
         lsp:sendWhenReady(function() lsp:didOpen(buf) end, "didOpen")
     end
 end
 
+function onAnyEvent()
+    local pane = micro.CurPane()
+    
+    if pane ~= nil and pane.Buf ~= nil then
+        lsp:sendWhenReady(function() lsp:didChange(pane.Buf) end, "didChange")
+    end
+
+    lsp:closeMissing()
+end
+
+function onSave(bp) 
+    local uri = utils.getRootUri(bp.Buf.AbsPath)
+
+    -- make sure clangd has the saved text before it hears about the save
+    lsp:sendWhenReady(function() lsp:didChange(bp.Buf) end, "didChange")
+    lsp:sendWhenReady(function() lsp:didSave(uri) end, "didSave")
+end
