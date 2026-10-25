@@ -5,10 +5,12 @@ _G.import = function(module)
             return "."
         end
     }
-  elseif module == "micro/util" then 
+  elseif module == "micro/util" then
     return {
       String = function(...) return end
     }
+  elseif module == "micro/config" then
+    return { ConfigDir = "." }
   end
 end
 

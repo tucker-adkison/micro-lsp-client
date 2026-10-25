@@ -39,6 +39,8 @@ _G.import = function(module)
             return os.getenv("HOME") or "/tmp", nil
         end
     }
+  elseif module == "micro/config" then
+    return { ConfigDir = "." }
   end
 end
 

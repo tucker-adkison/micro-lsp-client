@@ -14,8 +14,10 @@ _G.import = function(module)
             return "."
         end
     }
-  elseif module == "micro/shell" then 
+  elseif module == "micro/shell" then
     return shell
+  elseif module == "micro/config" then
+    return { ConfigDir = "." }
   end
 end
 

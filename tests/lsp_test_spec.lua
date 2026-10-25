@@ -30,10 +30,12 @@ _G.import = function(module)
     return {
       Sprintf = function() return mockBuf.AbsPath end
     }
-  elseif module == "micro/util" then 
+  elseif module == "micro/util" then
     return {
       String = function(bytes) return "Hello World" end
     }
+  elseif module == "micro/config" then
+    return { ConfigDir = "." }
   end
 end
 

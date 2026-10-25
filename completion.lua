@@ -1,8 +1,7 @@
 local micro = import("micro")
 local buffer = import("micro/buffer")
-local go_os = import("os")
-local home, _ = go_os.UserHomeDir()
-local pluginPath = home .. '/.config/micro/plug/lspClient/'
+local config = import("micro/config")
+local pluginPath = config.ConfigDir .. "/plug/lspClient/"
 package.path = package.path .. ";" .. pluginPath .. "?.lua"
 local json = require "json"
 local utils = require "utils"

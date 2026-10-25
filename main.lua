@@ -1,10 +1,9 @@
 local go_os = import("os")
-local home, _ = go_os.UserHomeDir()
-local pluginPath = home .. "/.config/micro/plug/lspClient/"
+local config = import("micro/config")
+local pluginPath = config.ConfigDir .. "/plug/lspClient/"
 package.path = package.path .. ";" .. pluginPath .. "?.lua"
 
 local micro = import("micro")
-local config = import("micro/config")
 local util = import("micro/util")
 local buffer = import("micro/buffer")
 
@@ -140,8 +139,10 @@ function nextParam(bp)
     end
 end
 
-function init() 
+function init()
     config.TryBindKey("Tab", "lua:lspClient.nextParam|InsertTab", false)
+    -- makes `help lspClient` open help/lspClient.md
+    config.AddRuntimeFile("lspClient", config.RTHelp, "help/lspClient.md")
 end
 
 function preinit()
