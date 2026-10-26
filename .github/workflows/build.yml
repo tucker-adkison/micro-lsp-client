@@ -54,58 +54,47 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 2
 
-      - name: Check if source files changed
-        id: check_changes
+      # repo.json decides the version: add a new entry there to release it
+      - name: Read version from repo.json
+        id: version
         run: |
-          # Get list of changed files in the last commit
-          changed_files=$(git diff --name-only HEAD^ HEAD)
-          echo "Changed files:"
-          echo "$changed_files"
+          version=$(jq -r '.[0].Versions[].Version' repo.json | sort -V | tail -1)
+          echo "Newest version in repo.json: $version"
 
-          # Check if any non-test files were changed
-          if echo "$changed_files" | grep -qvE '^tests/|_spec\.lua$'; then
-            echo "Source files changed, proceeding with release"
-            echo "should_release=true" >> $GITHUB_OUTPUT
-          else
-            echo "Only test files changed, skipping release"
+          # the entry's Url must point at the tag this job creates
+          url=$(jq -r --arg v "$version" '.[0].Versions[] | select(.Version == $v) | .Url' repo.json)
+          case "$url" in
+            */archive/$version.zip) ;;
+            *) echo "::error::Url for $version in repo.json does not end in /archive/$version.zip: $url"; exit 1 ;;
+          esac
+
+          if git ls-remote --exit-code --tags origin "refs/tags/$version" > /dev/null; then
+            echo "Tag $version already exists, skipping release"
             echo "should_release=false" >> $GITHUB_OUTPUT
+          else
+            echo "Tag $version does not exist, releasing"
+            echo "should_release=true" >> $GITHUB_OUTPUT
           fi
+          echo "version=$version" >> $GITHUB_OUTPUT
 
       - name: Create zip package
-        if: steps.check_changes.outputs.should_release == 'true'
+        if: steps.version.outputs.should_release == 'true'
         run: zip -R lspClient.zip '*.lua' 'repo.json' 'help/*'
 
       - name: Upload zip artifact
-        if: steps.check_changes.outputs.should_release == 'true'
+        if: steps.version.outputs.should_release == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: lspClient-package
           path: lspClient.zip
 
-      - name: Get latest release
-        if: steps.check_changes.outputs.should_release == 'true'
-        id: latest_release
-        run: |
-          latest=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-            "https://api.github.com/repos/${{ github.repository }}/releases/latest" \
-            | jq -r '.tag_name // "0.1.0"')
-          echo "Latest release: $latest"
-          # Extract version parts (major.minor.patch)
-          IFS='.' read -r major minor patch <<< "$latest"
-          # Increment patch version
-          new_patch=$((patch + 1))
-          new_version="$major.$minor.$new_patch"
-          echo "New version: $new_version"
-          echo "version=$new_version" >> $GITHUB_OUTPUT
-
       - name: Create release
-        if: steps.check_changes.outputs.should_release == 'true'
+        if: steps.version.outputs.should_release == 'true'
         uses: softprops/action-gh-release@v1
         with:
-          tag_name: ${{ steps.latest_release.outputs.version }}
-          name: ${{ steps.latest_release.outputs.version }}
+          tag_name: ${{ steps.version.outputs.version }}
+          name: ${{ steps.version.outputs.version }}
+          target_commitish: ${{ github.sha }}
           files: lspClient.zip
           generate_release_notes: true
