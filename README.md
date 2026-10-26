@@ -131,7 +131,9 @@ luarocks install busted
 busted tests
 ```
 
-GitHub Actions runs the tests for each push and pull request. A push to `main` that changes plugin files also creates a GitHub release with the next patch version. micro installs only the versions in `repo.json`, so add each new version to that file.
+GitHub Actions runs the tests for each push and pull request.
+
+To release a version, add an entry for it to `Versions` in `repo.json`. Use the URL `https://github.com/Tucker-Adkison/micro-lsp-client/archive/<version>.zip`. When you push this change to `main` and the tests pass, GitHub Actions creates the tag and the GitHub release for the newest version in `repo.json`. If that tag exists already, GitHub Actions does not create a release.
 
 ## Contributing
 
