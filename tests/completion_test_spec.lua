@@ -40,8 +40,8 @@ rawset(_G, "import", function(module)
 		}
 	elseif module == "micro/buffer" then
 		return {
-			Loc = function(_, _)
-				return 0
+			Loc = function(x, y)
+				return { X = x, Y = y }
 			end,
 		}
 	elseif module == "os" then
@@ -189,7 +189,7 @@ describe("test displayText", function()
 
 		assert
 			.spy(s)
-			.was.called_with(mockEventHandler, 0, "printf(constchar*restrict,...)                int\n")
+			.was.called_with(mockEventHandler, { X = 0, Y = 0 }, "printf(constchar*restrict,...)                int\n")
 	end)
 
 	it("text was displayed without details", function()
@@ -208,6 +208,6 @@ describe("test displayText", function()
 
 		assert
 			.spy(s)
-			.was.called_with(mockEventHandler, 0, "void                                             \n")
+			.was.called_with(mockEventHandler, { X = 0, Y = 0 }, "void                                             \n")
 	end)
 end)

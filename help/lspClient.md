@@ -10,21 +10,22 @@ shows them in a list below the file.
 `filetype` is the micro file type. `command` is the program that starts the
 language server. The program must be on your `PATH`.
 
-Example for C with clangd, in `settings.json`:
+Example with three file types, in `settings.json`:
 
 ```json
 {
-    "lsp.server": "c=clangd"
+    "lsp.server": "c=clangd,c++=clangd,lua=lua-language-server"
 }
 ```
 
 To see the file type of the current file, run `show filetype`.
 
+The plugin starts a language server when you open the first file of its file
+type. File types with the same command use one language server. In this
+example, C and C++ files use one clangd.
+
 The plugin reads `lsp.server` when micro starts. Restart micro after you
 change it.
-
-The plugin starts one language server for each micro session. Configure one
-file type in `lsp.server`.
 
 ## Keys
 
@@ -46,8 +47,10 @@ for Tab.
 2. Open `log.txt` in the current folder.
 3. Search for lines that start with `lsp `.
 
-The line `lsp starting` shows the command that the plugin ran. The other
-lines show each message to and from the language server.
+Each line starts with `lsp` and the command of the language server, for
+example `lsp clangd`. The line `lsp clangd starting` shows the arguments that
+the plugin used. The other lines show each message to and from the language
+server. If a language server stops, the log shows `lsp clangd exited`.
 
 ## More information
 

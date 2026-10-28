@@ -18,6 +18,11 @@ local function log(...)
 	micro.Log("lsp " .. table.concat(parts))
 end
 
+-- adds the server command, e.g. "lsp clangd → request #1 initialize"
+function Server:log(...)
+	log(self.lsp, " ", ...)
+end
+
 local function describeError(err)
 	return "error " .. tostring(err.code) .. " (" .. tostring(err.message) .. ")"
 end
@@ -41,9 +46,9 @@ function Server:sendMessage(id, method, params)
 	local content = "Content-Length: " .. #body .. "\r\n\r\n" .. body
 
 	if id ~= nil then
-		log("→ request #", id, " ", method)
+		self:log("→ request #", id, " ", method)
 	else
-		log("→ notify ", method)
+		self:log("→ notify ", method)
 	end
 
 	shell.JobSend(self.server, content)
@@ -73,9 +78,9 @@ function Server:respond(id, result, err)
 end
 
 function Server:startServer(lsp, args, onStderr, onExit)
-	log("starting ", lsp, " ", table.concat(args, " "))
-
 	self.lsp = lsp
+	self:log("starting ", table.concat(args, " "))
+
 	self.server = shell.JobSpawn(lsp, args, function(chunk)
 		self:read(chunk)
 	end, onStderr, onExit, {})
@@ -94,7 +99,7 @@ function Server:read(chunk)
 		local length = string.match(self.readBuffer:sub(1, startPos), "Content%-Length:%s*(%d+)")
 
 		if length == nil then
-			log("← header without Content-Length, skipped: ", self.readBuffer:sub(1, startPos))
+			self:log("← header without Content-Length, skipped: ", self.readBuffer:sub(1, startPos))
 			self.readBuffer = self.readBuffer:sub(endPos + 1)
 		else
 			length = tonumber(length)
@@ -113,10 +118,10 @@ function Server:read(chunk)
 				local dispatched, err = pcall(self.dispatch, self, result)
 
 				if not dispatched then
-					log("← dispatch failed: ", err)
+					self:log("← dispatch failed: ", err)
 				end
 			else
-				log("← could not decode message: ", result)
+				self:log("← could not decode message: ", result)
 			end
 		end
 	end
@@ -128,7 +133,7 @@ function Server:dispatch(msg)
 		self.pending[msg.id] = nil
 
 		if entry == nil then
-			log("← reply #", msg.id, ": unknown id")
+			self:log("← reply #", msg.id, ": unknown id")
 			return
 		end
 
@@ -147,7 +152,7 @@ function Server:dispatch(msg)
 			end
 		end
 
-		log("← reply #", msg.id, " ", entry.method, ": ", outcome)
+		self:log("← reply #", msg.id, " ", entry.method, ": ", outcome)
 	elseif msg.id == nil and msg.method ~= nil then
 		local handler = self.notificationHandlers[msg.method]
 		local outcome = "ok"
@@ -162,7 +167,7 @@ function Server:dispatch(msg)
 			end
 		end
 
-		log("← notify ", msg.method, ": ", outcome)
+		self:log("← notify ", msg.method, ": ", outcome)
 	elseif msg.id ~= nil and msg.method ~= nil then
 		local handler = self.notificationHandlers[msg.method]
 		local outcome
@@ -182,9 +187,9 @@ function Server:dispatch(msg)
 			end
 		end
 
-		log("← request #", msg.id, " ", msg.method, ": ", outcome)
+		self:log("← request #", msg.id, " ", msg.method, ": ", outcome)
 	else
-		log("← message with neither id nor method")
+		self:log("← message with neither id nor method")
 	end
 end
 

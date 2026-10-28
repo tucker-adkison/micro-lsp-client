@@ -14,9 +14,10 @@ function Completion.new()
 	return setmetatable({ completions = {} }, Completion)
 end
 
-function Completion:fromItems(items)
+function Completion:fromItems(items, position)
 	self.completions = {}
 	self.didHaveCompletions = false
+	self.position = position
 
 	if #items == 0 then
 		self.didHaveCompletions = false
@@ -34,6 +35,7 @@ function Completion:fromItems(items)
 			kind = item.kind, -- 3 = Function
 			sortText = item.sortText, -- For ordering
 			textEdit = item.textEdit, -- Range to replace
+			insertTextFormat = item.insertTextFormat,
 		})
 	end
 
@@ -83,51 +85,67 @@ end
 
 function Completion:autoComplete()
 	local item = self.completions[micro.CurPane().Buf:GetActiveCursor().Y + 1]
-
 	if item == nil then
 		return false
 	end
 
-	local textEdit = item["textEdit"]
-	local range = textEdit["range"]
-	local rangeStart = range["start"]
-	local rangeEnd = range["end"]
+	micro.CurPane():PreviousSplit()
+	local curPane = micro.CurPane()
+	local originalText, startLoc, endLoc
 
-	micro.Log("New text before cleaning:", textEdit["newText"])
+	if item.textEdit ~= nil then
+		local range = item.textEdit.range
+		originalText = item.textEdit.newText
+		startLoc = buffer.Loc(range.start.character, range.start.line)
+		endLoc = buffer.Loc(range["end"].character, range["end"].line)
+	else
+		local y, x = self.position.line, self.position.character
+		local line = curPane.Buf:Line(y)
+		local start = x
 
-	local originalText = textEdit["newText"]
+		while start > 0 and line:sub(start, start):match("[%w_]") do
+			start = start - 1
+		end
+
+		originalText = item.insertText or item.label
+		startLoc = buffer.Loc(start, y)
+		endLoc = buffer.Loc(x, y)
+	end
+
 	originalText = string.gsub(originalText, ",%s+%$", ",$")
-
 	local newText = string.gsub(originalText, "%$%{%d+:?[^}]*%}", "")
 	newText = string.gsub(newText, "%$%d+", "")
 
-	micro.Log("New text after cleaning:", newText)
-
-	local startLoc = buffer.Loc(rangeStart["character"], rangeStart["line"])
-	local endLoc = buffer.Loc(rangeEnd["character"], rangeEnd["line"])
-
-	if originalText ~= nil and self.snippetActive == false then
-		self.snippetActive = string.find(originalText, "%${%d") ~= nil or self.snippetActive
+	if self.snippetActive == false then
+		self.snippetActive = string.find(originalText, "%${%d") ~= nil
 	end
 
-	micro.CurPane():PreviousSplit()
-	local curPane = micro.CurPane()
 	curPane.Buf.EventHandler:Remove(startLoc, endLoc)
 	curPane.Buf.EventHandler:Insert(startLoc, newText)
 
-	local cursor_pos = self:findCursorPosition(originalText, newText, rangeStart["character"], rangeStart["line"])
-	curPane.Cursor:GotoLoc(cursor_pos)
+	local cursorPos = self:findCursorPosition(originalText, newText, startLoc.X, startLoc.Y)
+	curPane.Cursor:GotoLoc(cursorPos)
 
 	return true
 end
 
+local function locAfter(text, baseChar, baseLine)
+	local _, lines = string.gsub(text, "\n", "")
+	if lines == 0 then
+		return buffer.Loc(baseChar + string.len(text), baseLine)
+	end
+
+	local lastLine = string.match(text, "[^\n]*$")
+	return buffer.Loc(string.len(lastLine), baseLine + lines)
+end
+
 function Completion:findCursorPosition(originalText, cleanedText, baseChar, baseLine)
-	local matchStart = string.find(originalText, "%$%{%d:?[^}]*%}")
+	local matchStart = string.find(originalText, "%$%{?%d")
 	if matchStart then
 		local prefix = string.sub(originalText, 1, matchStart - 1)
 		local cleanedPrefix = string.gsub(prefix, "%$%{%d+:?[^}]*%}", "")
 		cleanedPrefix = string.gsub(cleanedPrefix, "%$%d+", "")
-		return buffer.Loc(baseChar + string.len(cleanedPrefix), baseLine)
+		return locAfter(cleanedPrefix, baseChar, baseLine)
 	end
 
 	if string.len(cleanedText) >= 2 then
@@ -142,11 +160,11 @@ function Completion:findCursorPosition(originalText, cleanedText, baseChar, base
 		}
 
 		if pairs[lastTwo] then
-			return buffer.Loc(baseChar + string.len(cleanedText) - 1, baseLine)
+			return locAfter(string.sub(cleanedText, 1, -2), baseChar, baseLine)
 		end
 	end
 
-	return buffer.Loc(baseChar + string.len(cleanedText), baseLine)
+	return locAfter(cleanedText, baseChar, baseLine)
 end
 
 return Completion

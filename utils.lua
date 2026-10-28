@@ -24,6 +24,34 @@ local function getLspArgs(lsp, rootUri)
 	return {}
 end
 
+-- micro file types whose name differs from the LSP languageId
+-- micro: runtime/syntax/*.yaml (v2.0.15), LSP: TextDocumentItem in the 3.17 spec
+local languageIds = {
+	["c++"] = "cpp",
+	["csharp-script"] = "csharp",
+	["git-rebase-todo"] = "git-rebase",
+	batch = "bat",
+	gomod = "go.mod", -- gopls name, not in the spec
+	html4 = "html",
+	html5 = "html",
+	patch = "diff",
+	python2 = "python",
+	raku = "perl6",
+	shell = "shellscript",
+	zsh = "shellscript",
+}
+
+-- micro gives one file type to files that LSP tells apart
+local languageIdsByExtension = {
+	bib = "bibtex", -- micro: tex
+	tsx = "typescriptreact", -- micro: typescript
+}
+
+local function getLanguageId(fileType, path)
+	local extension = path and path:match("%.(%w+)$")
+	return languageIdsByExtension[extension] or languageIds[fileType] or fileType
+end
+
 local function getFileText(buf)
 	return util.String(buf:Bytes())
 end
@@ -141,6 +169,7 @@ return {
 	getRootUri = getRootUri,
 	getFileText = getFileText,
 	getLspArgs = getLspArgs,
+	getLanguageId = getLanguageId,
 	getInitiaizeParams = getInitiaizeParams,
 	getOpenPaths = getOpenPaths,
 }

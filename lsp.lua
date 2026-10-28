@@ -39,7 +39,7 @@ function Lsp:completion(buf, onItems)
 		elseif result == nil then
 			onItems({})
 		else
-			onItems(result.items or result)
+			onItems(result.items or result, { line = line, character = char })
 		end
 	end)
 end
@@ -90,7 +90,7 @@ function Lsp:didOpen(buf)
 	self.server:notify("textDocument/didOpen", {
 		textDocument = {
 			uri = uri,
-			languageId = fileType,
+			languageId = utils.getLanguageId(fileType, filePath),
 			version = version,
 			text = fileText,
 		},

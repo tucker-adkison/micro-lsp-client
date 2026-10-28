@@ -10,17 +10,18 @@ lspClient is a plugin for the [micro text editor](https://micro-editor.github.io
 - Parameter stops for functions. After you insert a function, Tab moves the cursor to the next parameter.
 - Document sync. The plugin tells the language server when you open, change, save, and close each file.
 - A correct startup. The plugin waits for the reply to `initialize` before it sends other messages to the language server.
+- More than one language server. Each file type can use a different language server, and the language servers run at the same time.
 
 ## Limits
 
-- The plugin starts one language server for each micro session. This is the language server for the first configured file type that you open. Configure one file type in `lsp.server`.
 - The plugin shows completions only. Diagnostics, hover text, and go to definition are not available.
-- Development and testing use macOS, micro 2.0.15, and clangd.
+- The plugin talks to the language server through standard input and output. Some language servers need an argument to use standard input and output, for example `--stdio`. `lsp.server` cannot hold arguments, so these language servers do not start. See [Settings](#settings) for the arguments that the plugin adds.
+- Development and testing use macOS and micro 2.0.15.
 
 ## Requirements
 
 - micro 2.0.0 or later.
-- A language server on your `PATH` for each file type that you configure. For C, use clangd. clangd is part of the Xcode Command Line Tools on macOS. You can also install it with `brew install llvm`.
+- A language server on your `PATH` for each file type that you configure. Install the language server with the package manager of your system or of the language.
 
 ## Installation
 
@@ -53,12 +54,32 @@ Set `lsp.server` in `settings.json`. The value is a list of `filetype=command` p
 
 ```json
 {
-  "lsp.server": "c=clangd"
+  "lsp.server": "filetype=command"
 }
 ```
 
 - `filetype` is the micro file type. To see the file type of the current file, run `show filetype` in the micro command bar (Ctrl-e).
 - `command` is the program that starts the language server. The program must be on your `PATH`.
+
+Examples of language servers that use standard input and output when they start without arguments:
+
+| File type | Setting |
+| --- | --- |
+| C | `c=clangd` |
+| Go | `go=gopls` |
+| Lua | `lua=lua-language-server` |
+| Python | `python=pylsp` |
+| Rust | `rust=rust-analyzer` |
+
+To use more than one language server, separate the pairs with commas:
+
+```json
+{
+  "lsp.server": "c=clangd,c++=clangd,lua=lua-language-server"
+}
+```
+
+The plugin starts a language server when you open the first file of its file type. File types with the same command use one language server. In this example, C and C++ files use one clangd.
 
 The plugin reads `lsp.server` when micro starts. Restart micro after you change it.
 
@@ -92,32 +113,35 @@ The plugin binds Tab to `lua:lspClient.nextParam|InsertTab` when your `bindings.
 ## Known problems
 
 - Down also moves the cursor in the file down by one line.
-- When you close a split, the plugin sends `shutdown` to the language server. clangd continues to send completions after this message. Other language servers can stop.
+- When you close a split, the plugin sends `shutdown` to the language server of that file. The plugin sends it even when other files of that language server are open. Some language servers continue to send completions after this message. Other language servers stop.
+- If a language server stops, the plugin does not start it again. Restart micro.
 
 ## Troubleshooting
 
 ### The language server does not start
 
-1. Make sure that the command is on your `PATH`, for example with `which clangd`.
+1. Make sure that the command is on your `PATH`. Run `which` and the command, for example `which gopls`.
 2. Make sure that `lsp.server` uses the micro file type and the format `filetype=command`.
 3. Start micro with `micro -debug file.c`. micro writes `log.txt` in the current folder.
 4. Search the log for the lines of the plugin with `grep "lsp " log.txt`.
 
-The line `lsp starting` shows the command that the plugin ran. The other lines show each message to and from the language server.
+Each line starts with `lsp` and the command of the language server, for example `lsp clangd`. The line `lsp clangd starting` shows the arguments that the plugin used. The other lines show each message to and from the language server. To see the lines of one language server, search for its command, for example `grep "lsp clangd" log.txt`.
+
+If a language server stops, the log shows a line such as `lsp clangd exited`.
 
 ### The first completions are empty
 
-clangd reads the headers of the file after it starts. Until clangd has read them, it can send an empty completion list. Wait one or two seconds, then type again.
+Many language servers read the project after they start. Until the language server has read the project, it can send an empty completion list. Wait one or two seconds, then type again.
 
-### clangd does not complete symbols from your headers
+### Completions do not include symbols from other files of the project
 
-clangd needs the compile flags of a project with more than one file or with custom include folders. Generate `compile_commands.json` with CMake (`-DCMAKE_EXPORT_COMPILE_COMMANDS=ON`) or with `bear -- make`. For a small project, a `compile_flags.txt` file in the project folder is sufficient.
+Some language servers need a project file to find the other files and their dependencies. Examples are `compile_commands.json` for clangd, `go.mod` for gopls, and `Cargo.toml` for rust-analyzer. The plugin uses the folder where you started micro as the project folder. Start micro in the folder that contains the project file.
 
 ## Development
 
 | File | Content |
 | --- | --- |
-| `main.lua` | The micro callbacks for open, typing, save, close, and keys. The completion list. |
+| `main.lua` | The micro callbacks for open, typing, save, close, and keys. One client for each language server. The completion list. |
 | `lsp.lua` | The LSP messages: `initialize`, document sync, and completion. The server state and the message queue. |
 | `server.lua` | The language server process. It reads messages, matches replies to requests, and answers requests from the server. |
 | `completion.lua` | The completion entries, the text that the plugin inserts, and the parameter stops. |

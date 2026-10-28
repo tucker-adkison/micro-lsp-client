@@ -7,8 +7,14 @@
 ---@class micro.module
 ---@field Log fun(...: any)
 ---@field CurPane fun(): any
+---@field CurTab fun(): micro.tab
 ---@field Tabs fun(): any
 ---@field InfoBar fun(): any
+
+---@class micro.tab
+---@field Panes any[]
+---@field GetPane fun(self: micro.tab, splitid: integer): integer index of the pane with this split id, 0 if none
+---@field SetActive fun(self: micro.tab, i: integer)
 
 ---@class micro.config
 ---@field ConfigDir string
