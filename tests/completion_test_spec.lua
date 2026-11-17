@@ -130,7 +130,8 @@ describe("test autcomplete", function()
 		assert.is_true(completion:autoComplete())
 		assert
 			.spy(s)
-			.was.called_with(completion, "printf(${1:constchar*restrict,...})", "printf()", 1, 3)
+			-- line 4, not 3: the #include from additionalTextEdits goes in above
+			.was.called_with(completion, "printf(${1:constchar*restrict,...})", "printf()", 1, 4)
 	end)
 
 	it("autocomplete findCursorPosition worked when regex did not match", function()
@@ -169,6 +170,143 @@ describe("test autcomplete", function()
 		assert
 			.spy(s)
 			.was.not_called_with(completion, "printf(${1:constchar*restrict,...})", "printf()", 1, 3)
+	end)
+end)
+
+describe("test additionalTextEdits", function()
+	-- the text of each Insert call, in the order autoComplete made them
+	local function insertedTexts(s)
+		local texts = {}
+		for _, call in ipairs(s.calls) do
+			table.insert(texts, call.vals[3])
+		end
+		return texts
+	end
+
+	it("clangd #include is inserted after the main edit", function()
+		local completion = Completion.new()
+		local s = spy.on(mockEventHandler, "Insert")
+
+		completion:fromItems({
+			{
+				label = "•printf(const char *, ...)",
+				textEdit = {
+					newText = "printf(${1:const char *, ...})",
+					range = { start = { line = 1, character = 1 }, ["end"] = { line = 1, character = 5 } },
+				},
+				additionalTextEdits = {
+					{
+						newText = "#include <stdio.h>\n",
+						range = { start = { line = 0, character = 0 }, ["end"] = { line = 0, character = 0 } },
+					},
+				},
+			},
+		}, { line = 1, character = 5 })
+
+		assert.is_true(completion:autoComplete())
+		assert.are.same({ "printf()", "#include <stdio.h>\n" }, insertedTexts(s))
+		assert.spy(s).was.called_with(mockEventHandler, { X = 0, Y = 0 }, "#include <stdio.h>\n")
+	end)
+
+	it("jdtls import with a blank line moves the cursor down two lines", function()
+		local completion = Completion.new()
+		local s = spy.on(completion, "findCursorPosition")
+		local gotoLoc = spy.on(mockCursor, "GotoLoc")
+
+		completion:fromItems({
+			{
+				label = "ArrayList - java.util",
+				textEdit = {
+					newText = "ArrayList",
+					range = { start = { line = 2, character = 2 }, ["end"] = { line = 2, character = 9 } },
+				},
+				additionalTextEdits = {
+					{
+						newText = "import java.util.ArrayList;\n\n",
+						range = { start = { line = 0, character = 0 }, ["end"] = { line = 0, character = 0 } },
+					},
+				},
+			},
+		}, { line = 2, character = 9 })
+
+		assert.is_true(completion:autoComplete())
+		assert.spy(s).was.called_with(completion, "ArrayList", "ArrayList", 2, 4)
+		assert.spy(gotoLoc).was.called_with(mockCursor, { X = 11, Y = 4 })
+	end)
+
+	it("pylsp import works without a textEdit", function()
+		local completion = Completion.new()
+		local s = spy.on(completion, "findCursorPosition")
+		local line = mockBuf.Line
+		mockBuf.Line = function()
+			return "OrderedD"
+		end
+
+		completion:fromItems({
+			{
+				label = "OrderedDict",
+				insertText = "OrderedDict",
+				additionalTextEdits = {
+					{
+						newText = "from collections import OrderedDict\n",
+						range = { start = { line = 0, character = 0 }, ["end"] = { line = 0, character = 0 } },
+					},
+				},
+			},
+		}, { line = 1, character = 8 })
+
+		assert.is_true(completion:autoComplete())
+		mockBuf.Line = line
+		assert.spy(s).was.called_with(completion, "OrderedDict", "OrderedDict", 0, 2)
+	end)
+
+	it("edits are applied from the end of the file to the start", function()
+		local completion = Completion.new()
+		local insert = spy.on(mockEventHandler, "Insert")
+		local find = spy.on(completion, "findCursorPosition")
+		local function edit(line, text)
+			return { newText = text, range = { start = { line = line, character = 0 }, ["end"] = { line = line, character = 0 } } }
+		end
+
+		completion:fromItems({
+			{
+				label = "main",
+				textEdit = {
+					newText = "main",
+					range = { start = { line = 5, character = 0 }, ["end"] = { line = 5, character = 2 } },
+				},
+				additionalTextEdits = { edit(0, "a\n"), edit(7, "below\n"), edit(2, "b\n") },
+			},
+		}, { line = 5, character = 2 })
+
+		assert.is_true(completion:autoComplete())
+		assert.are.same({ "below\n", "main", "b\n", "a\n" }, insertedTexts(insert))
+		-- only the two edits above the main edit move it
+		assert.spy(find).was.called_with(completion, "main", "main", 0, 7)
+	end)
+
+	it("an edit that replaces a line does not move the cursor", function()
+		local completion = Completion.new()
+		local s = spy.on(completion, "findCursorPosition")
+
+		completion:fromItems({
+			{
+				label = "b",
+				textEdit = {
+					newText = "b",
+					range = { start = { line = 3, character = 0 }, ["end"] = { line = 3, character = 1 } },
+				},
+				additionalTextEdits = {
+					{
+						newText = "from x import a, b",
+						range = { start = { line = 0, character = 0 }, ["end"] = { line = 0, character = 15 } },
+					},
+				},
+			},
+		}, { line = 3, character = 1 })
+
+		assert.is_true(completion:autoComplete())
+		assert.spy(s).was.called_with(completion, "b", "b", 0, 3)
 	end)
 end)
 

@@ -35,6 +35,7 @@ function Completion:fromItems(items, position)
 			kind = item.kind, -- 3 = Function
 			sortText = item.sortText, -- For ordering
 			textEdit = item.textEdit, -- Range to replace
+			additionalTextEdits = item.additionalTextEdits, -- Extra edits, such as an #include
 			insertTextFormat = item.insertTextFormat,
 		})
 	end
@@ -120,10 +121,34 @@ function Completion:autoComplete()
 		self.snippetActive = string.find(originalText, "%${%d") ~= nil
 	end
 
-	curPane.Buf.EventHandler:Remove(startLoc, endLoc)
-	curPane.Buf.EventHandler:Insert(startLoc, newText)
+	local edits = { { startLoc = startLoc, endLoc = endLoc, text = newText } }
+	for _, e in ipairs(item.additionalTextEdits or {}) do
+		table.insert(edits, {
+			startLoc = buffer.Loc(e.range.start.character, e.range.start.line),
+			endLoc = buffer.Loc(e.range["end"].character, e.range["end"].line),
+			text = e.newText,
+		})
+	end
 
-	local cursorPos = self:findCursorPosition(originalText, newText, startLoc.X, startLoc.Y)
+	table.sort(edits, function(a, b)
+		if a.startLoc.Y ~= b.startLoc.Y then
+			return a.startLoc.Y > b.startLoc.Y
+		end
+		return a.startLoc.X > b.startLoc.X
+	end)
+
+	local shift = 0
+	for _, e in ipairs(edits) do
+		curPane.Buf.EventHandler:Remove(e.startLoc, e.endLoc)
+		curPane.Buf.EventHandler:Insert(e.startLoc, e.text)
+
+		if e.startLoc.Y < startLoc.Y then
+			local _, added = string.gsub(e.text, "\n", "")
+			shift = shift + added - (e.endLoc.Y - e.startLoc.Y)
+		end
+	end
+
+	local cursorPos = self:findCursorPosition(originalText, newText, startLoc.X, startLoc.Y + shift)
 	curPane.Cursor:GotoLoc(cursorPos)
 
 	return true
