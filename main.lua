@@ -167,7 +167,7 @@ function preinit()
 	end
 end
 
-function onRune(bp, _)
+function onRune(bp, r)
 	local lsp = clientFor(bp.Buf)
 	if lsp ~= nil then
 		local buf = bp.Buf
@@ -176,22 +176,29 @@ function onRune(bp, _)
 			lsp:didChange(buf)
 		end, "didChange")
 
-		completionOwner = lsp
+		local context = lsp:completionContext(r)
 
-		lsp:sendWhenReady(function()
-			lsp:completion(buf, function(items, position)
-				if completionOwner ~= lsp then
-					return
-				end
-				completion:fromItems(items, position)
-				if completion.didHaveCompletions then
-					openDropdownMenu()
-					completion:displayText(sideView)
-				else
-					closeDropdownMenu()
-				end
-			end)
-		end, "completion")
+		if context == nil then
+			completionOwner = nil
+			closeDropdownMenu()
+		else
+			completionOwner = lsp
+
+			lsp:sendWhenReady(function()
+				lsp:completion(buf, function(items, position)
+					if completionOwner ~= lsp then
+						return
+					end
+					completion:fromItems(items, position)
+					if completion.didHaveCompletions then
+						openDropdownMenu()
+						completion:displayText(sideView)
+					else
+						closeDropdownMenu()
+					end
+				end, context)
+			end, "completion")
+		end
 	end
 
 	if micro.CurPane() == sideView then

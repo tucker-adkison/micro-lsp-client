@@ -71,6 +71,23 @@ describe("test completion", function()
 		}, match.is_function())
 	end)
 
+	it("completion request sends the context", function()
+		local s = spy.on(server, "request")
+		local lsp = Lsp.new(server)
+
+		lsp:completion(mockBuf, function() end, { triggerKind = 2, triggerCharacter = "." })
+		assert.spy(s).was.called_with(server, "textDocument/completion", {
+			textDocument = {
+				uri = mockBuf.AbsPath,
+			},
+			position = {
+				line = mockCursor.Y,
+				character = mockCursor.X,
+			},
+			context = { triggerKind = 2, triggerCharacter = "." },
+		}, match.is_function())
+	end)
+
 	it("didChange request correct", function()
 		local s = spy.on(server, "notify")
 		local lsp = Lsp.new(server)
@@ -130,5 +147,42 @@ describe("test completion", function()
 
 		lsp:shutdown()
 		assert.spy(s).was.called_with(server, "shutdown", nil, nil)
+	end)
+end)
+
+describe("test completionContext", function()
+	local lsp = Lsp.new(server)
+	lsp.capabilities = { completionProvider = { triggerCharacters = { ".", "{" } } }
+
+	it("a name character asks for completions", function()
+		assert.are.same({ triggerKind = 1 }, lsp:completionContext("a"))
+		assert.are.same({ triggerKind = 1 }, lsp:completionContext("_"))
+		assert.are.same({ triggerKind = 1 }, lsp:completionContext("7"))
+	end)
+
+	it("a trigger character asks for completions", function()
+		assert.are.same({ triggerKind = 2, triggerCharacter = "." }, lsp:completionContext("."))
+		assert.are.same({ triggerKind = 2, triggerCharacter = "{" }, lsp:completionContext("{"))
+	end)
+
+	it("other characters close the list", function()
+		assert.is_nil(lsp:completionContext(";"))
+		assert.is_nil(lsp:completionContext("}"))
+		assert.is_nil(lsp:completionContext(" "))
+	end)
+
+	it("works before initialize returns", function()
+		local starting = Lsp.new(server)
+
+		assert.are.same({ triggerKind = 1 }, starting:completionContext("a"))
+		assert.is_nil(starting:completionContext("."))
+	end)
+
+	it("works when the server has no trigger characters", function()
+		local noTriggers = Lsp.new(server)
+		noTriggers.capabilities = { completionProvider = {} }
+
+		assert.are.same({ triggerKind = 1 }, noTriggers:completionContext("a"))
+		assert.is_nil(noTriggers:completionContext(";"))
 	end)
 end)

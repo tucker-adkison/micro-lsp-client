@@ -20,7 +20,7 @@ function Lsp.new(server)
 	}, Lsp)
 end
 
-function Lsp:completion(buf, onItems)
+function Lsp:completion(buf, onItems, context)
 	local filePath = buf.AbsPath
 	local line = buf:GetActiveCursor().Y
 	local char = buf:GetActiveCursor().X
@@ -33,6 +33,7 @@ function Lsp:completion(buf, onItems)
 			line = line,
 			character = char,
 		},
+		context = context,
 	}, function(result, err, id)
 		if err ~= nil or id ~= self.lastCompletionId then
 			return
@@ -170,6 +171,23 @@ function Lsp:sendWhenReady(fn, t)
 	elseif self.state == "ready" then
 		fn()
 	end
+end
+
+function Lsp:completionContext(r)
+	local provider = self.capabilities and self.capabilities.completionProvider
+	local triggers = (provider and provider.triggerCharacters) or {}
+
+	for _, c in ipairs(triggers) do
+		if c == r then
+			return { triggerKind = 2, triggerCharacter = r }
+		end
+	end
+
+	if r:match("^[%w_]$") then
+		return { triggerKind = 1 }
+	end
+
+	return nil
 end
 
 return Lsp
