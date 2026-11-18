@@ -2,19 +2,21 @@
 
 # lspClient: an LSP client for micro
 
-lspClient is a plugin for the [micro text editor](https://micro-editor.github.io/). It connects micro to a language server that uses the [Language Server Protocol](https://microsoft.github.io/language-server-protocol/) (LSP). The language server sends code completions, and the plugin shows them in a list below the file.
+lspClient is a plugin for the [micro text editor](https://micro-editor.github.io/). It connects micro to a language server that uses the [Language Server Protocol](https://microsoft.github.io/language-server-protocol/) (LSP). The language server sends code completions and the problems that it finds in the file. The plugin shows the completions in a list below the file and marks the problems in the file.
 
 ## Features
 
-- A completion list that opens while you type. Each entry shows the name and, if the language server sends it, the type.
+- A completion list that opens while you type. Each entry shows the name and, if the language server sends it, the type. Characters such as `;` and `}` close the list.
 - Parameter stops for functions. After you insert a function, Tab moves the cursor to the next parameter.
+- Missing headers and imports. Some language servers send an `#include` or `import` line with a completion. When you insert the entry, the plugin also inserts that line. clangd and jdtls do this.
+- Errors and warnings. The plugin marks the problems that the language server finds while you type. See [Errors and warnings](#errors-and-warnings).
 - Document sync. The plugin tells the language server when you open, change, save, and close each file.
 - A correct startup. The plugin waits for the reply to `initialize` before it sends other messages to the language server.
 - More than one language server. Each file type can use a different language server, and the language servers run at the same time.
 
 ## Limits
 
-- The plugin shows completions only. Diagnostics, hover text, and go to definition are not available.
+- The plugin shows completions and diagnostics only. Hover text and go to definition are not available.
 - The plugin talks to the language server through standard input and output. Some language servers need an argument to use standard input and output, for example `--stdio`. `lsp.server` cannot hold arguments, so these language servers do not start. See [Settings](#settings) for the arguments that the plugin adds.
 - Development and testing use macOS and micro 2.0.15.
 
@@ -110,6 +112,28 @@ The plugin adds arguments for some language servers:
 
 The plugin binds Tab to `lua:lspClient.nextParam|InsertTab` when your `bindings.json` has no binding for Tab. This binding replaces the default Tab actions of micro, `Autocomplete` and `IndentSelection`.
 
+## Errors and warnings
+
+The language server checks the file while you type. The plugin shows each problem in three places:
+
+- The gutter shows `>>` on the line. The color comes from your color scheme: `gutter-error`, `gutter-warning`, or `gutter-info`.
+- The part of the line that has the problem is underlined.
+- When the cursor is on the line, the bottom bar shows the message.
+
+micro shows the message only when the cursor is on the first or last line of a problem.
+
+To show the number of errors and warnings in the status line, add `$(lspClient.diagnostics)` to `statusformatl` in `settings.json`. This example is the default of micro 2.0.15 with `$(lspClient.diagnostics)` added:
+
+```json
+{
+  "statusformatl": "$(filename) $(modified)$(overwrite)($(line),$(col)) $(status.paste)$(lspClient.diagnostics) | ft:$(opt:filetype) | $(opt:fileformat) | $(opt:encoding)"
+}
+```
+
+The status line then shows, for example, `E2 W1` for 2 errors and 1 warning. When the file has no errors and no warnings, this part is empty. Information and hints show in the gutter, but they are not in the count.
+
+`statusformatl` replaces the default of micro. Keep the other parts of the example, or micro does not show them.
+
 ## Known problems
 
 - Down also moves the cursor in the file down by one line.
@@ -137,6 +161,31 @@ Many language servers read the project after they start. Until the language serv
 
 Some language servers need a project file to find the other files and their dependencies. Examples are `compile_commands.json` for clangd, `go.mod` for gopls, and `Cargo.toml` for rust-analyzer. The plugin uses the folder where you started micro as the project folder. Start micro in the folder that contains the project file.
 
+### Each error shows two times, or the message changes only when you save
+
+micro has a `linter` plugin. It is on by default and checks the file when you save. For C, it runs `gcc`. If a language server also checks the file type, micro shows the problems from both. The bottom bar can show the message from the last save.
+
+To stop only the `gcc` linter, add this to `~/.config/micro/init.lua`:
+
+```lua
+function postinit()
+    linter.removeLinter("gcc")
+end
+```
+
+The `gcc` linter uses the flags `-Wall -Wextra`. When the project has no `compile_commands.json`, clangd does not use these flags, and warnings such as unused variables do not show. To keep these warnings, add the flags to a `.clangd` file in the project folder:
+
+```yaml
+CompileFlags:
+  Add: [-Wall, -Wextra]
+```
+
+To stop the linter for all file types, set `"linter": false` in `settings.json`. Do this only when each file type that you edit has a language server in `lsp.server`. Otherwise, micro does not check these file types.
+
+### The status line does not show the number of errors
+
+Add `$(lspClient.diagnostics)` to `statusformatl`. See [Errors and warnings](#errors-and-warnings).
+
 ## Development
 
 | File | Content |
@@ -144,8 +193,9 @@ Some language servers need a project file to find the other files and their depe
 | `main.lua` | The micro callbacks for open, typing, save, close, and keys. One client for each language server. The completion list. |
 | `lsp.lua` | The LSP messages: `initialize`, document sync, and completion. The server state and the message queue. |
 | `server.lua` | The language server process. It reads messages, matches replies to requests, and answers requests from the server. |
-| `completion.lua` | The completion entries, the text that the plugin inserts, and the parameter stops. |
-| `utils.lua` | Arguments for each language server, the `initialize` parameters, the file text, and the list of open files. |
+| `completion.lua` | The completion entries, the text that the plugin inserts with its headers and imports, and the parameter stops. |
+| `diagnostics.lua` | The errors and warnings: the gutter messages and the count for the status line. |
+| `utils.lua` | Arguments for each language server, the `initialize` parameters, the file text, and the open files. |
 | `json.lua` | The JSON encoder and decoder from [rxi/json.lua](https://github.com/rxi/json.lua). |
 
 The tests in `tests/` use [busted](https://lunarmodules.github.io/busted/):

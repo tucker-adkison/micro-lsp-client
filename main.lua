@@ -22,6 +22,7 @@ local completion = Completion.new()
 -- local logger = Logger.new()
 local Server = require("server")
 local Lsp = require("lsp")
+local Diagnostics = require("diagnostics")
 
 local lsps = {}
 
@@ -154,6 +155,7 @@ function init()
 	config.TryBindKey("Tab", "lua:lspClient.nextParam|InsertTab", false)
 	-- makes `help lspClient` open help/lspClient.md
 	config.AddRuntimeFile("lspClient", config.RTHelp, "help/lspClient.md")
+	micro.SetStatusInfoFn("lspClient.diagnostics")
 end
 
 function preinit()
@@ -263,6 +265,13 @@ function startClientFor(buf)
 		local server = Server.new()
 		local lsp = Lsp.new(server)
 
+		server:onNotification("textDocument/publishDiagnostics", function(params)
+			local buf = utils.getOpenBuffer(params.uri)
+			if buf ~= nil then
+				Diagnostics.show(buf, "lsp " .. command, params.diagnostics)
+			end
+		end)
+
 		local wd, _ = go_os.Getwd()
 		local args = utils.getLspArgs(command, wd)
 
@@ -287,4 +296,8 @@ function clientFor(buf)
 	end
 
 	return lsps[command]
+end
+
+function diagnostics(buf)
+	return Diagnostics.summary(buf)
 end

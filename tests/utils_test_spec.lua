@@ -1,5 +1,20 @@
+-- the tabs that micro.Tabs() returns; each test sets its own
+local mockTabs = { List = {} }
+
 rawset(_G, "import", function(module)
-	if module == "os" then
+	if module == "micro" then
+		return {
+			Tabs = function()
+				return mockTabs
+			end,
+		}
+	elseif module == "fmt" then
+		return {
+			Sprintf = function(format, value)
+				return string.format(format, value)
+			end,
+		}
+	elseif module == "os" then
 		return {
 			UserHomeDir = function()
 				return "."
@@ -55,5 +70,31 @@ describe("test getLanguageId", function()
 	it("handles a path without an extension", function()
 		assert.are.equal("makefile", utils.getLanguageId("makefile", "/src/Makefile"))
 		assert.are.equal("go", utils.getLanguageId("go", nil))
+	end)
+end)
+
+describe("test getOpenBuffer", function()
+	local function pane(path)
+		return { Buf = { AbsPath = path } }
+	end
+
+	it("finds a buffer in any tab and pane", function()
+		local wanted = pane("/src/b.c")
+		mockTabs = { List = { { Panes = { pane("/src/a.c") } }, { Panes = { pane("/src/x.lua"), wanted } } } }
+
+		assert.are.equal(wanted.Buf, utils.getOpenBuffer("file:///src/b.c"))
+	end)
+
+	it("returns nil for a file that is not open", function()
+		mockTabs = { List = { { Panes = { pane("/src/a.c") } } } }
+
+		assert.is_nil(utils.getOpenBuffer("file:///src/closed.c"))
+	end)
+
+	it("skips panes without a buffer", function()
+		local wanted = pane("/src/a.c")
+		mockTabs = { List = { { Panes = { {}, wanted } } } }
+
+		assert.are.equal(wanted.Buf, utils.getOpenBuffer("file:///src/a.c"))
 	end)
 end)

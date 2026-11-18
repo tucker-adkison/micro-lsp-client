@@ -1,8 +1,9 @@
 # lspClient
 
 lspClient connects micro to a language server that uses the Language Server
-Protocol (LSP). The language server sends code completions, and the plugin
-shows them in a list below the file.
+Protocol (LSP). The language server sends code completions and the problems
+that it finds in the file. The plugin shows the completions in a list below
+the file and marks the problems in the file.
 
 ## Settings
 
@@ -40,6 +41,32 @@ change it.
 At other times, Tab inserts a tab. The plugin binds Tab to
 `lua:lspClient.nextParam|InsertTab` when your `bindings.json` has no binding
 for Tab.
+
+Some language servers send an `#include` or `import` line with a completion.
+When you insert the entry, the plugin also inserts that line.
+
+## Errors and warnings
+
+The language server checks the file while you type. The gutter shows `>>` on
+each line with a problem, and the part with the problem is underlined. When
+the cursor is on the line, the bottom bar shows the message.
+
+To show the number of errors and warnings in the status line, add
+`$(lspClient.diagnostics)` to `statusformatl`. Example, with the default of
+micro 2.0.15:
+
+```json
+{
+    "statusformatl": "$(filename) $(modified)$(overwrite)($(line),$(col)) $(status.paste)$(lspClient.diagnostics) | ft:$(opt:filetype) | $(opt:fileformat) | $(opt:encoding)"
+}
+```
+
+The status line then shows, for example, `E2 W1` for 2 errors and 1 warning.
+
+micro's `linter` plugin also checks some file types when you save, for
+example C with `gcc`. Then each problem can show two times. To stop the C
+linter, call `linter.removeLinter("gcc")` in `postinit` in
+`~/.config/micro/init.lua`. See the README for more information.
 
 ## Log
 

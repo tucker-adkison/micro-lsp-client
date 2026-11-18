@@ -60,6 +60,19 @@ local function getRootUri(wd)
 	return fmt.Sprintf("file://%s", wd)
 end
 
+local function getOpenBuffer(uri)
+	local tabs = micro.Tabs()
+	for i = 1, #tabs.List do
+		local tab = tabs.List[i]
+		for j = 1, #tab.Panes do
+			local buf = tab.Panes[j].Buf
+			if buf ~= nil and getRootUri(buf.AbsPath) == uri then
+				return buf
+			end
+		end
+	end
+end
+
 local function getOpenPaths()
 	local open = {}
 	local tabs = micro.Tabs()
@@ -172,4 +185,5 @@ return {
 	getLanguageId = getLanguageId,
 	getInitiaizeParams = getInitiaizeParams,
 	getOpenPaths = getOpenPaths,
+	getOpenBuffer = getOpenBuffer,
 }

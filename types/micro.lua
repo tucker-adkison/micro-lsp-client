@@ -10,6 +10,7 @@
 ---@field CurTab fun(): micro.tab
 ---@field Tabs fun(): any
 ---@field InfoBar fun(): any
+---@field SetStatusInfoFn fun(fn: string) makes $(plugin.fn) usable in statusformatl and statusformatr
 
 ---@class micro.tab
 ---@field Panes any[]
@@ -31,6 +32,10 @@
 ---@class micro.buffer
 ---@field Loc fun(x: integer, y: integer): any
 ---@field NewBuffer fun(text: string, path: string): any
+---@field MTInfo integer gutter message kind 0, colored with gutter-info
+---@field MTWarning integer gutter message kind 1, colored with gutter-warning
+---@field MTError integer gutter message kind 2, colored with gutter-error
+---@field NewMessage fun(owner: string, msg: string, start: any, finish: any, kind: integer): any a gutter message for buf:AddMessage
 
 ---@class micro.util
 ---@field String fun(bytes: any): string
